@@ -94,17 +94,17 @@ class B2B:
         # 获取距离矩阵的存储路径
         self._save_b2b_path = self._b2b_save_home + "b2b_" + self._data_name + '_' + self._b2b_type + ".npz"
         self._b2b_name = {"ave": "ave_hausdorff",
-                          "sim": "simple_dis"}
+                          "sim": "simple_dis"}#map类型
         self.__compute_dis()
 
     def __compute_dis(self):
         """
-        计算距离
+        计算距离（包与包之间距离，N*N维矩阵）
         """
         if not os.path.exists(self._save_b2b_path):
             # 包的大小
             N = len(self._bags)
-            dis = np.zeros((N, N))
+            dis = np.zeros((N, N))#np.zeros 是 NumPy 库中创建指定形状、指定数据类型的全 0 数组的核心函数
             print("使用%s距离计算距离矩阵..." % self._b2b_name[self._b2b_type])
             for i in range(N):
                 # 打印进度条
@@ -117,7 +117,7 @@ class B2B:
                         dis[i, j] = dis[j, i] = simple_dis(self._bags[i][0][:, : -1], self._bags[j][0][:, : -1])
             # 结束的时候需要换行一下
             print()
-            np.savez(self._save_b2b_path, dis=dis)
+            np.savez(self._save_b2b_path, dis=dis)#np.savez 是NumPy库的函数，用于将多个NumPy数组一次性保存到单个压缩的.npz文件中
         self._dis = np.load(self._save_b2b_path)['dis']
 
     def get_dis(self):

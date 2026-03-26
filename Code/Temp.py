@@ -39,7 +39,7 @@ class Main:
         self.text_batch_size = None
         self.text_maximum_psi = None
         self.text_maximum_iter = None
-        self.file_name = "D:/Data/Benchmark/musk1+.mat"
+        self.file_name = "../Data/Benchmark/musk1+.mat"
         self.learning_rate = 0.25
         self.num_batch = 2
         self.maximum_psi = 100
@@ -122,7 +122,7 @@ class Main:
         ttk.Combobox(self.root, textvariable=self.performance_var,
                      values=["f1-measure", "accuracy"]). \
             place(relx=0.4635, rely=0.8, relheight=0.05, relwidth=0.1545)
-        self.performance_var.set("F1-measure")
+        self.performance_var.set("f1-measure")
 
     def __set_text(self):
         """
@@ -281,10 +281,37 @@ class Main:
         self.__text_print_param()
         self.text_print_middle.delete(0.0, tk.END)
         self.text_print_final.delete(0.0, tk.END)
-        run = ELDB(self.file_name, m=self.maximum_psi, algorithm_type=[self.radio_button.get()],
-                   b2b_type=[self.distance_var.get()], k=10, update_mode=self.algorithm_type_var.get()[0],
-                   classifier_type=[self.classifier_var.get()],
-                   learning_r=self.learning_rate, num_batch=self.num_batch)
+
+        # 获取界面上选择的距离度量简化名 (ave_hausdorff -> ave)
+        b2b_val = "ave" if "ave" in self.distance_var.get() else "sim"
+
+        # 获取界面上选择的指标简化名 (f1-measure -> f1_score)
+        perf_val = "f1_score" if "f1" in self.performance_var.get().lower() else "accuracy"
+
+        # 确保从文本框重新读取最新的参数，防止用户手动输入了新值
+        lr = float(self.text_learning_rate.get(0.0, tk.END).strip())
+        bs = int(self.text_batch_size.get(0.0, tk.END).strip())
+        mp = int(self.text_maximum_psi.get(0.0, tk.END).strip())
+
+        run = ELDB(
+            self.file_name,
+            psi=self.scale.get(),
+            alpha=lr,  # 使用转换后的 float
+            batch=bs,  # 使用转换后的 int
+            psi_max=mp,  # 使用转换后的 int
+            type_b2b=b2b_val,
+            mode_bag_init=self.radio_button.get(),
+            mode_action=self.algorithm_type_var.get()[0],
+            k=10,
+            type_classifier=[self.classifier_var.get()],
+            type_performance=[perf_val]
+        )
+
+        # --- 新增：提前构建用于从字典取值的 key ---
+        # 必须与 ELDB.py 中生成的 key 格式一致: "分类器名 指标名"
+        perf_key_part = "f1_score" if "f1" in self.performance_var.get().lower() else "accuracy"
+        full_key = self.classifier_var.get() + " " + perf_key_part
+        # ---------------------------------------
         performance_max = None
         total_time = 0
         for loop in range(self.maximum_iter):
@@ -293,7 +320,10 @@ class Main:
             current_time = 0
             self.text_print_middle.insert(tk.END, "The " + str(loop) + "-th loop:")
             for i in range(10):
-                performance[i] = run.classify() * 100
+                # --- 修改处：调用 get_mapping 并提取字典值 ---
+                results_dict = run.get_mapping()
+                performance[i] = results_dict[full_key] * 100
+                # ---------------------------------------
                 self.text_print_middle.insert(tk.END, "  The %d-th 10CV: %.2f\n" % (i, performance[i]))
             current_time = (time.time() - start_time) * 1000
             total_time += current_time

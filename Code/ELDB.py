@@ -42,6 +42,7 @@ class ELDB(MIL):
             save_home:
             bag_space:              参见MIL文件
         """
+        # super()是 Python中用于访问父类方法的内置函数,ELDB：当前子类的类名;self：ELDB 类的实例对象;返回一个「父类的代理对象」
         super(ELDB, self).__init__(data_path, save_home=save_home, bag_space=bag_space)
         self._psi = psi
         self._alpha = alpha
@@ -65,11 +66,11 @@ class ELDB(MIL):
         # 距离矩阵
         self.dis = B2B(self.data_name, self.bag_space, self._type_b2b, self.save_home).get_dis()
         # 记录不同分类器不同分类性能的分类结果
-        self.lab_predict = {}
+        self.lab_predict = {}   # 字典，键为 “分类器 + 性能度量”（如knn f1_score），值为预测标签列表
         # 记录按照交叉验证顺利的真实标签
-        self.lab_true = []
+        self.lab_true = []      # 列表，存储所有折的真实标签（按顺序拼接）
         # 记录分类性能
-        self.val_performance = {}
+        self.val_performance = {}       # 字典，存储最终各分类器 + 度量的性能值（如准确率、F1 分数）
 
     def __reset_record(self):
         """
@@ -81,7 +82,7 @@ class ELDB(MIL):
 
     def __get_classifier(self):
         """
-        获取分类器
+        获取分类器对象
         """
         return Classify(self._type_classifier, self._type_performance)
 
@@ -96,55 +97,58 @@ class ELDB(MIL):
         获取映射结果.
         """
 
-        def __dBagSet_update_r(para_idx_dBagSet, para_score_dBagSet, idx_cur, score_cur):
+        def __dBagSet_update_r(para_idx_dBagSet, para_score_dBagSet, idx_cur, score_cur): #方法内的方法
             """
-            用于行为模式r的更新
+            用于行为模式r的更新,仅在mode_action="r"时调用的内部函数；若mode_action="a"，则直接将 T_s 中的高分包追加到 dBagSet，无需此逻辑
             :param
-                para_score_td:   T_d的得分拷贝
+                para_score_td:          dBagSet(Td的)的包索引列表
+                para_score_dBagSet:     dBagSet的包得分列表
+                idx_cur:        当前包的索引
                 score_cur:       当前包的得分
             :return
                 返回更新后的score_td
             """
-            for idx_find in np.arange(len(para_idx_dBagSet) - 1, -1, -1):
+            for idx_find in np.arange(len(para_idx_dBagSet) - 1, -1, -1):   # 从后往前遍历dBagSet的得分，找到第一个比当前包得分大的位置
                 if score_cur > para_score_dBagSet[idx_find]:
                     continue
                 else:
+                    # 找到插入位置，替换后续元素
                     idx_find += 1
                     idx_find = len(para_idx_dBagSet) - 1 if idx_find == len(para_idx_dBagSet) else idx_find
                     para_idx_dBagSet[idx_find + 1:] = para_idx_dBagSet[idx_find: -1]
                     para_score_dBagSet[idx_find + 1:] = para_score_dBagSet[idx_find: -1]
                     para_idx_dBagSet[idx_find], para_score_dBagSet[idx_find] = idx_cur, score_cur
                     break
-            return para_idx_dBagSet, para_score_dBagSet
+            return para_idx_dBagSet, para_score_dBagSet     # 返回的是更新后的dBagSet(Td的)的包索引列表和得分列表
 
         # 获取训练集和测试集的索引
         idxes_tr, idxes_te = get_k_cv_idx(self.N, self._k)
         # 正包标签
-        lab_positive = np.max(self.bag_lab)
+        lab_positive = np.max(self.bag_lab) # bag_lab是父类属性; np.max()计算数组元素的最⼤值(一维数组返回一个值，二维数组返回一维数组)
         # 获取单实例分类器
         classifier = self.__get_classifier()
-        # 性能度量器
+        # 性能度量器对象
         performance = get_performance(self._type_performance)
         # 记录参数重设
         self.__reset_record()
-        # 主循环
-        for loop, (idx_tr, idx_te) in enumerate(zip(idxes_tr, idxes_te)):
+        # 主循环，k折
+        for loop, (idx_tr, idx_te) in enumerate(zip(idxes_tr, idxes_te)):# 内置函数enumerate，核心作用是：遍历可迭代对象（列表、元组、字符串等）时，同时获取「元素的索引」和「元素本身」
             """步骤0:初始化操作"""
             if self._print_loop:
                 print("第{}折交叉验证...".format(loop))
             # 计算训练集、基准数据集和更新数据集的大小
-            N_T = len(idx_tr)
-            N_Ts = int(N_T * (1 - self._alpha))
-            # 计算批次大小
+            N_T = len(idx_tr)  # 当前折训练集总包数
+            N_Ts = int(N_T * (1 - self._alpha))  # T_s的大小（更新集）
+            # 计算批次大小（默认将T_s二分）
             batch = N_Ts // 2 if self._batch is None else self._batch
-            # 计算最大更新次数
+            # 计算最大更新次数（T_s按batch划分的批次数）
             n_l = N_Ts // batch
-            N_Td = N_T - (n_l * batch)
-            # 获取T_d和T_s的索引
+            N_Td = N_T - (n_l * batch)# T_d的大小（基准集，用于初始化dBagSet）
+            # 获取该折中T_d(基础数据集)和T_s(更新数据集)的索引
             idx_td, idx_ts = np.array(idx_tr[:N_Td]), np.array(idx_tr[N_Td:])
 
             """步骤1:模型和参数初始化"""
-            # 计算\Delta矩阵
+            # 计算\Delta矩阵（N_Td×N_Td，同类包=-1，异类=1）
             matrix_Delta = np.zeros((N_Td, N_Td), dtype=int)
             for i in range(N_Td):
                 for j in range(N_Td):
@@ -153,23 +157,25 @@ class ELDB(MIL):
                         matrix_Delta[i, j] = -1
                     else:
                         matrix_Delta[i, j] = 1
-            # 计算\Gamma矩阵
+            # 计算\Gamma矩阵（对角矩阵，对角线元素为Delta矩阵每行的和）
+            #np.diag():参数:二维矩阵 输出:一维数组 功能:提取主对角线元素;参数:一维数组 输出:二维矩阵 功能:生成对角矩阵
             matrix_Gamma = np.diag(np.sum(matrix_Delta, 1))
-            # 计算L矩阵
+            # 计算L矩阵（拉普拉斯矩阵，L=Gamma-Delta）
             matrix_L = matrix_Gamma - matrix_Delta
             # 只需要保留L矩阵
             del matrix_Delta, matrix_Gamma
-            # 基于整个T_d进行映射
-            mapping_bag = self.dis[idx_tr, :][:, idx_td]
-            # 使用矩阵乘法加速
+            # 将训练集所有包基于整个T_d进行映射，得到二维子矩阵★★★
+            mapping_bag = self.dis[idx_tr, :][:, idx_td]    # [idx_tr, :]取第idx_tr行的所有列；[:, idx_td]取第idx_td列的所有行；最终得到行=idx_tr、列=idx_td 的交叉子矩阵
+            # 使用矩阵乘法加速  np.transpose:矩阵转置(行列互换)，np.dot:矩阵乘法
+            #矩阵维数   mapping_bag:N_T×N_Td   matrix_L:N_Td×N_Td  mapping_bag^T:N_Td×N_T  score_t(结果):N_T×N_T
             score_t = np.dot(np.dot(mapping_bag, matrix_L), np.transpose(mapping_bag))
             # 对角元素即是包的得分
-            score_t = np.diag(score_t)
+            score_t = np.diag(score_t)  # 提取矩阵score_t的主对角线元素
             # 获取T_d和T_s中每一个包的得分
             score_td, score_ts = score_t[:N_Td], score_t[N_Td:]
             # 获取初始dBagSet的大小
             psi = int(min(self._psi_max, N_Td) * self._psi)
-            arg_score_td = np.argsort(score_td)[::-1]
+            arg_score_td = np.argsort(score_td)[::-1] # 对分数数组score_td从低到高排序，[::-1]将排序颠倒变成降序，并返回排序后元素的「原始索引」（不返回分数本身，只返回位置编号）
             # 获取dBagSet在训练集中的真实索引
             if self._mode_bag_init == 'g':
                 idx_dBagSet = arg_score_td[:psi].tolist()
@@ -179,6 +185,7 @@ class ELDB(MIL):
                 for i in arg_score_td:
                     if count >= psi:
                         break
+                    # '\':续行符或转义字符，此处是续航符
                     if self._mode_bag_init == 'p' and self.bag_lab[idx_td[i]] == lab_positive or\
                        self._mode_bag_init == 'n' and self.bag_lab[idx_td[i]] != lab_positive:
                         idx_dBagSet.append(i)
@@ -187,7 +194,7 @@ class ELDB(MIL):
             del score_t, arg_score_td
             # 记录最小得分的索引和得分
             tau, p = len(idx_dBagSet[-1]) - 1, score_dBagSet[-1]
-            # 获取所有更新后的dBagSet
+            # 遍历更新轮次，生成所有更新后的dBagSet，每折中的n_l轮
             for i in range(n_l):
                 idx_dBagSet_update, score_dBagSet_update = idx_dBagSet[-1].copy(), score_dBagSet.copy()
                 for j in range(batch):
@@ -203,9 +210,9 @@ class ELDB(MIL):
                         idx_dBagSet_update, score_dBagSet = __dBagSet_update_r(
                             idx_dBagSet_update, score_dBagSet_update, idx_ts[idx_temp], score_ts[idx_temp])
 
-                if idx_dBagSet_update == idx_dBagSet[-1]:
+                if idx_dBagSet_update == idx_dBagSet[-1]: # 若dBagSet无变化，跳过
                     continue
-                idx_dBagSet.append(idx_dBagSet_update)
+                idx_dBagSet.append(idx_dBagSet_update) # 将更新后的dBagSet加入列表
             del idx_dBagSet_update, score_dBagSet, mapping_bag
 
             """步骤2:构建带权集成模型"""
@@ -213,54 +220,64 @@ class ELDB(MIL):
             Y_d, Y_s = self.bag_lab[idx_td], self.bag_lab[idx_ts]
             # 训练集和测试集标签
             lab_tr, lab_te = self.bag_lab[idx_tr], self.bag_lab[idx_te]
+            # 存储每个dBagSet的预测结果和权重
             Predict, Weight = [], []
 
+            # 遍历每个dBagSet（每个dBagSet对应一个基模型）
             for i, dBagSet in enumerate(idx_dBagSet):
-                # 获取映射
+                # 生成T_d→dBagSet、T_s→dBagSet的距离矩阵（嵌入空间映射）
                 mapping_td, mapping_ts = self.dis[idx_td, :][:, dBagSet], self.dis[idx_ts, :][:, dBagSet]
-                # 获取迭代器
+                # 生成 分类器的输入迭代器（T_d训练，T_s验证）
                 data_iter = get_iter(mapping_td, Y_d, mapping_ts, Y_s)
                 # 获取权重并记录
-                Weight.append(classifier.test(data_iter))
+                Weight.append(classifier.test(data_iter))   #test()是ClassifyTool.py中自定义的方法，返回的是测试集分类性能
                 # 获取训练集和测试集
+                #np.vstack() 是 把多个数组沿着「垂直方向（上下）」拼在一起
                 mapping_tr, mapping_te = np.vstack([mapping_td, mapping_ts]), self.dis[idx_te, :][:, dBagSet]
                 del mapping_td, mapping_ts
-                # 模型重训练并预测
+                # 模型重训练并预测(加入了测试集)
                 data_iter = get_iter(mapping_tr, lab_tr, mapping_te, lab_te)
                 classifier.test(data_iter)
-                Predict.append(classifier.te_predict_arr)
+                Predict.append(classifier.te_predict_arr)#classifier.te_predict_arr:重新训练的测试集预测标签
             # 清理缓存
             del data_iter, mapping_tr, mapping_te, lab_tr, lab_te
             """步骤3:获取预测的标签向量"""
-            # 记录预测结果
+            # 记录所有分类器+度量的加权预测结果
             te_predict_all = {}
-            # 处理每一个分类器和分类指标的预测结果
+            # 遍历每个dBagSet的预测结果和权重
             for i, (predict, weight) in enumerate(zip(Predict, Weight)):
-                # 对于每一个分类器
+                # 遍历每个分类器
                 for classifier_name in self._type_classifier:
-                    # 对于每一个分类度量指标
+                    # 获取当前分类器的权重（各性能度量的权重值）
                     weight_classifier = weight[classifier_name]
+                    # 遍历每个性能度量
                     for j, metric in enumerate(weight_classifier):
-                        # 加权
+                        # 计算加权预测结果（权重×预测标签）
+                        # 累加加权结果（集成融合）
                         weight_predict = metric * np.array(predict[classifier_name])
+                        #把新的权重预测结果（weight_predict）累加到字典对应键的数值上；如果键不存在，就先初始化为全 0 数组再累加
+                        # 简化后核心逻辑te_predict_all[键] = te_predict_all.get(键, 全0数组) + weight_predict
                         te_predict_all[classifier_name + ' ' + self._type_performance[j]] = \
                             te_predict_all.get(classifier_name + ' ' + self._type_performance[j],
                                                np.zeros_like(weight_predict)) + weight_predict
-            # 计算分类阈值
+            # 计算分类阈值（默认取基模型数量的一半,dBagSet数量的一半）
             tau = len(Weight) / 2
 
-            # 阈值函数
+            # 阈值函数：将加权结果二值化（>tau为1，否则为0）
             def sign(arr):
                 arr[arr > tau] = 1
                 arr[arr != 1] = 0
                 return arr
+            # 处理每个分类器+度量的预测结果，拼接至全局记录
+            #字典.items():一次性获取字典里所有的「键 (key) + 值 (value)」成对数据
             for key, val in te_predict_all.items():
                 if loop == 0:
                     self.lab_predict[key] = sign(val).tolist()
                 else:
                     self.lab_predict[key].extend(sign(val).tolist())
+            # 拼接当前折的真实标签
             self.lab_true.extend(self.bag_lab[idx_te])
-        # 获取分类性能
+        # 遍历所有分类器+度量，计算最终性能
         for key, val in self.lab_predict.items():
             key_temp = key.split()
             self.val_performance[key] = performance[key_temp[-1]](val, self.lab_true)

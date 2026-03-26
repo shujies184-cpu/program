@@ -18,7 +18,7 @@ class Classify:
         performance_type：   性能度量指标列表，如["f1_score"]
                              已有的性能度量包括"f1_score"、"acc"、"roc"
         当参数均使用None时，将使用默认分类器和默认分类性能度量
-    :attribute
+    :attribute  这些都不是一维数组，因为classifier_type可以作为参数
         tr_true_label_arr：  训练集真实标签
         tr_predict_arr：     训练集测试标签
         te_true_label_arr：  测试集真实标签
@@ -29,8 +29,8 @@ class Classify:
 
     def __init__(self, classifier_type=None, performance_type=None):
 
-        self.__classifier_type = classifier_type
-        self.__performance_type = performance_type
+        self.__classifier_type = classifier_type    #分类器的类型标识；classifier_type与__init_classify中的classifier_type不是同一个，两个都是局部变量
+        self.__performance_type = performance_type  #性能指标的名称标识；performance_type与__init_classify中的performance_type不是同一个，两个都是局部变量
         self.tr_true_label_arr = {}
         self.tr_predict_arr = {}
         self.te_true_label_arr = {}
@@ -44,8 +44,8 @@ class Classify:
         分类器初始化
         """
 
-        self.__classifier = []
-        self.__performance_er = []
+        self.__classifier = []      #分类器的实例对象容器，区别与__classifier_type
+        self.__performance_er = []      #性能指标函数的对象容器，区别与__performance_type
         if self.__classifier_type is None:
             self.__classifier_type = ["knn"]
         for classifier_type in self.__classifier_type:
@@ -91,14 +91,14 @@ class Classify:
         self.__reset_record()
         for tr_data, tr_label, te_data, te_label in data_iter:
             for classifier, classifier_type in zip(self.__classifier, self.__classifier_type):
-                model = classifier.fit(tr_data, tr_label)
+                model = classifier.fit(tr_data, tr_label)   #模型训练，拿训练集数据训练
 
                 if is_pre_tr:
-                    predict = model.predict(tr_data)
+                    predict = model.predict(tr_data)        #预测训练集
                     self.tr_predict_arr[classifier_type].extend(predict)
                     self.tr_true_label_arr[classifier_type].extend(tr_label)
 
-                predict = model.predict(te_data)
+                predict = model.predict(te_data)        #预测测试集
                 self.te_predict_arr[classifier_type].extend(predict)
                 self.te_true_label_arr[classifier_type].extend(te_label)
 

@@ -13,14 +13,14 @@ from scipy.io import loadmat
 
 def get_iter(tr, tr_lab, te, te_lab):
     """
-    获取单词迭代器
+    获取单次迭代器
     :param  tr:     训练集
     :param  tr_lab: 训练集标签
     :param  te:     测试集
     :param  te_lab: 测试集标签
     :return 相应迭代器
     """
-    yield tr, tr_lab, te, te_lab
+    yield tr, tr_lab, te, te_lab    #返回生成器对象
 
 
 def get_k_cv_idx(num_x, k=10):
@@ -31,7 +31,7 @@ def get_k_cv_idx(num_x, k=10):
     :return:            训练集索引，测试集索引
     """
     # 随机初始化索引
-    rand_idx = np.random.permutation(num_x)
+    rand_idx = np.random.permutation(num_x)     # np.random.permutation(num_x) 生成 [0,1,...,num_x-1] 的随机排列
     # 每一折的大小
     fold = int(np.floor(num_x / k))
     ret_tr_idx = []
@@ -43,7 +43,7 @@ def get_k_cv_idx(num_x, k=10):
         ret_tr_idx.append(tr_idx)
         # 添加当前折的测试集索引
         ret_te_idx.append(rand_idx[i * fold: (i + 1) * fold].tolist())
-    return ret_tr_idx, ret_te_idx
+    return ret_tr_idx, ret_te_idx   # 返回生成每一轮对应的训练集 / 测试集索引
 
 
 def get_performance(type_performance):
